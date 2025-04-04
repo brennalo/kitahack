@@ -141,7 +141,11 @@ class DatabaseService{
         DocumentSnapshot snapshot = await _db.collection('users').doc(uid).get();
         Map<String, dynamic>? data = snapshot.data() as Map<String, dynamic>?;
 
+<<<<<<< Updated upstream
         return data?['level'] ?? 1; // Default level is 1 if not found
+=======
+        return data?['level'] ?? 1;
+>>>>>>> Stashed changes
       } catch (e) {
         print("Error fetching user level: $e");
       }
@@ -155,7 +159,10 @@ class DatabaseService{
   
     if (uid.isNotEmpty) {
       DocumentReference userRef = _db.collection('users').doc(uid);
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
       //fetch user data
       DocumentSnapshot snapshot = await userRef.get();
       Map<String, dynamic>? data = snapshot.data() as Map<String, dynamic>?;
