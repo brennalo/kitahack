@@ -5,29 +5,17 @@ import 'firebase_service.dart';
 
 enum LessonStage {learning, button, camera}
 class Lesson extends StatefulWidget{
-<<<<<<< Updated upstream
-  List<CameraDescription> cameras;
-
-  Lesson(this.cameras);
-=======
   final int level;
   List<CameraDescription> cameras;
   Lesson(this.cameras,this.level);
->>>>>>> Stashed changes
 
   @override
   State<Lesson> createState() => _LessonState();
 }
 
 class _LessonState extends State<Lesson>{
-<<<<<<< Updated upstream
-  LessonStage currentStage=LessonStage.learning;
-  var currentQuestion=0;
-  //maybe can terus convert firebase data into list of mapped string
-=======
   LessonStage currentStage = LessonStage.learning;
   var currentQuestion = 0;
->>>>>>> Stashed changes
   bool _isLoading = true;
   List<Map<String, dynamic>> questions = [];
   final DatabaseService _databaseService = DatabaseService();
@@ -37,11 +25,7 @@ class _LessonState extends State<Lesson>{
   @override
   void initState() {
     super.initState();
-<<<<<<< Updated upstream
-    fetchLessons(); // Fetch data from Firebase
-=======
     fetchLessons();
->>>>>>> Stashed changes
     if (widget.cameras.isNotEmpty) {
       cameraController = CameraController(widget.cameras[0], ResolutionPreset.medium);
       cameraController.initialize().then((_) {
@@ -52,13 +36,8 @@ class _LessonState extends State<Lesson>{
   }
 
   void fetchLessons() async {
-<<<<<<< Updated upstream
-    String level = "level1"; // Change based on actual level logic
-    List<Map<String, dynamic>>? data = await _databaseService.fetchLessonData(level);
-=======
     String level = "level${widget.level}"; 
     List<Map<String, dynamic>>? data = await _databaseService.fetchLessonData(level).timeout(Duration(seconds: 5));
->>>>>>> Stashed changes
     if (data != null) {
       setState(() {
         questions = data;
@@ -68,11 +47,7 @@ class _LessonState extends State<Lesson>{
   }
 
   void dispose(){
-<<<<<<< Updated upstream
-    _controller?.dispose();
-=======
     _controller.dispose();
->>>>>>> Stashed changes
     super.dispose();
   }
 

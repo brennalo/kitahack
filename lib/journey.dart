@@ -6,10 +6,6 @@ import 'profile.dart';
 import 'login.dart';
 import 'firebase_service.dart';
 
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
 class Journey extends StatefulWidget{
   var cameras;
   Journey(this.cameras);
@@ -19,16 +15,9 @@ class Journey extends StatefulWidget{
 }
 
 class _JourneyState extends State<Journey>{
-<<<<<<< Updated upstream
-  //List<String> lessons=['1','2','3'];
-  final DatabaseService _databaseService = DatabaseService();
-  final List<String> lessons = List.generate(8, (index) => 'Lesson ${index + 1}');
-  int level=0; //get level
-=======
   final DatabaseService _databaseService = DatabaseService();
   final List<String> lessons = List.generate(8, (index) => 'Lesson ${index + 1}');
   int level = 0; //get level
->>>>>>> Stashed changes
   
   @override
   void initState() {
@@ -58,15 +47,6 @@ class _JourneyState extends State<Journey>{
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: List.generate(lessons.length, (index) {
-<<<<<<< Updated upstream
-              return Padding(
-                padding: EdgeInsets.only(top: index == 0 ? 20 : 40, left: index.isOdd ? 120 : 30, right: index.isEven ? 120 : 30),
-                child: ElevatedButton(
-                  onPressed:index>1?null: () async{
-                    await _databaseService.updateUserLevel(index + 1);
-                    Navigator.push(
-                      context,MaterialPageRoute(builder: (context)=>getPage(index)),
-=======
               bool isLocked = index >= level;
               return Padding(
                 padding: EdgeInsets.only(top: index == 0 ? 20 : 40, left: index.isOdd ? 120 : 30, right: index.isEven ? 120 : 30),
@@ -78,18 +58,12 @@ class _JourneyState extends State<Journey>{
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context)=>getPage(index + 1)),
->>>>>>> Stashed changes
                     );
                   },
                   style: ElevatedButton.styleFrom(
                     padding: EdgeInsets.symmetric(vertical: 20, horizontal: 30),
-<<<<<<< Updated upstream
-                    backgroundColor: index>1?Colors.blueGrey:Colors.orange[600],
-                    foregroundColor:index>1?Colors.white:Colors.amber[100],
-=======
                     backgroundColor: isLocked ?Colors.blueGrey:Colors.orange[600],
                     foregroundColor:isLocked ?Colors.white:Colors.amber[100],
->>>>>>> Stashed changes
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(50),
                     ),
@@ -105,14 +79,6 @@ class _JourneyState extends State<Journey>{
   }
 
   Widget getPage(int index) {
-<<<<<<< Updated upstream
-    switch (index){
-      case 0: return Lesson(cameras);
-      case 1: return Lesson(cameras);
-      default:return Journey(cameras);
-    }
-=======
     return Lesson(widget.cameras, index);
->>>>>>> Stashed changes
   }
 }
