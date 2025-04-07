@@ -8,6 +8,88 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'dart:convert';
 import 'package:image/image.dart' as img;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:math';
+import 'dart:typed_data';
+
+List<double> extractLandmarkFeatures(List<List<double>> landmarks, String handednessLabel) {
+  List<double> features = [];
+
+  // 1. Absolute normalized coordinates (x, y, z)
+  for (var landmark in landmarks) {
+    features.addAll(landmark); // Each landmark = [x, y, z]
+  }
+
+  // 2. Normalize to wrist (landmark 0)
+  var wrist = landmarks[0];
+  List<List<double>> normalizedLandmarks = landmarks.map((point) {
+    return [
+      point[0] - wrist[0],
+      point[1] - wrist[1],
+      point[2] - wrist[2],
+    ];
+  }).toList();
+
+  // 3. Tip distances from wrist (normalized space)
+  for (var tipIndex in [4, 8, 12, 16, 20]) {
+    var tip = normalizedLandmarks[tipIndex];
+    double distance = sqrt(tip[0] * tip[0] + tip[1] * tip[1] + tip[2] * tip[2]);
+    features.add(distance);
+  }
+
+  // 4. Angles between joints
+  double calculateAngle(List<double> p1, List<double> p2, List<double> p3) {
+    var v1 = [
+      p1[0] - p2[0],
+      p1[1] - p2[1],
+      p1[2] - p2[2],
+    ];
+    var v2 = [
+      p3[0] - p2[0],
+      p3[1] - p2[1],
+      p3[2] - p2[2],
+    ];
+
+    double norm1 = sqrt(v1[0]*v1[0] + v1[1]*v1[1] + v1[2]*v1[2]);
+    double norm2 = sqrt(v2[0]*v2[0] + v2[1]*v2[1] + v2[2]*v2[2]);
+
+    if (norm1 == 0 || norm2 == 0) return 0.0;
+
+    double dot = v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2];
+    double cosAngle = dot / (norm1 * norm2);
+    cosAngle = cosAngle.clamp(-1.0, 1.0); // Avoid NaN
+    return acos(cosAngle); // returns angle in radians
+  }
+
+  List<List<int>> fingerTriplets = [
+    [1, 2, 4],    // Thumb: CMC → MCP → TIP
+    [5, 6, 8],    // Index: MCP → PIP → TIP
+    [9, 10, 12],  // Middle
+    [13, 14, 16], // Ring
+    [17, 18, 20], // Pinky
+  ];
+
+  for (var triplet in fingerTriplets) {
+    features.add(calculateAngle(
+      normalizedLandmarks[triplet[0]],
+      normalizedLandmarks[triplet[1]],
+      normalizedLandmarks[triplet[2]],
+    ));
+  }
+
+  // 5. Add handedness (Right = 1.0, Left = 0.0)
+  features.add(handednessLabel == 'Right' ? 1.0 : 0.0);
+
+  return features;
+}
+
+Future<Map<String, dynamic>> runMediaPipeOnImage(CameraImage image) async {
+  // TEMP: return mock data so your code compiles and runs
+  return {
+    'landmarks': List.generate(21, (i) => [0.1 * i, 0.2 * i, 0.05 * i]), // 21 dummy landmarks
+    'handedness': 'Right',
+  };
+}
+
 
 enum LessonStage {learning, button, camera}
 class Lesson extends StatefulWidget{
@@ -32,7 +114,6 @@ class _LessonState extends State<Lesson>{
   late CameraController cameraController;
   late Interpreter interpreter;
   Map<String, dynamic> labelMapping = {};
-  final String? apiKey = dotenv.env['GEMINI_API_KEY'];
   
   @override
   void initState() {
@@ -77,63 +158,56 @@ class _LessonState extends State<Lesson>{
   }
 
   void startImageStream() {
-    cameraController.startImageStream((CameraImage image) async {
-      if (_isProcessing || !modelReady) return;
-      _isProcessing = true;
-      await Future.delayed(Duration(milliseconds: 300));
-      try {
-        final img.Image rgbImage = convertYUV420ToImage(image);
-        int cropSize = rgbImage.width < rgbImage.height ? rgbImage.width : rgbImage.height;
-        final img.Image cropped = img.copyCrop(
-          rgbImage,
-          (rgbImage.width - cropSize) ~/ 2,
-          (rgbImage.height - cropSize) ~/ 2,
-          cropSize,
-          cropSize,
-        );
-        final img.Image resized = img.copyResize(cropped, width: 224, height: 224);
-        final input = [
-          List.generate(224, (y) => List.generate(224, (x) {
-            final pixel = resized.getPixel(x, y);
-            return [
-              img.getRed(pixel) / 255.0,
-              img.getGreen(pixel) / 255.0,
-              img.getBlue(pixel) / 255.0,
-            ];
-          }))
-        ];
-        var output = List.generate(2034, (_) => List.filled(6, 0.0));
-        interpreter.run(input, output);
+  cameraController.startImageStream((CameraImage image) async {
+    if (_isProcessing || !modelReady) return;
 
-        final prediction = List.filled(6, 0.0);
-        for (var row in output) {
-          for (int i = 0; i < 6; i++) {
-            prediction[i] += row[i];
-          }
-        }
-        for (int i = 0; i < 6; i++) {
-          prediction[i] /= 2034;
-        }
-        final maxIndex = prediction.indexOf(prediction.reduce((a, b) => a > b ? a : b));
-        final predictedLabel = labelMapping[maxIndex.toString()];
-        final expected = questions[currentQuestion]['label'];
-        print("Predicted: $predictedLabel | Expected: $expected");
-        print("Prediction confidence: ${prediction[maxIndex]}");
-        print("All scores: $prediction");
-
-        if (prediction[maxIndex] > 0.5 &&
-          predictedLabel.toLowerCase().trim() == expected.toLowerCase().trim()) {
-            setState(() => showNextButton = true);
-          } else {
-            setState(() => showNextButton = false);
-          }
-      } catch (e) {
-        print("Detection error: $e");
+    _isProcessing = true;
+    
+    try {
+      final result = await runMediaPipeOnImage(image);
+      if (result == null || result['landmarks'] == null) {
+        _isProcessing = false;
+        return;
       }
 
-      _isProcessing = false;
-    });
-  }
+      List<List<double>> landmarks = List<List<double>>.from(result['landmarks']);
+      String handedness = result['handedness'];
+
+      List<double> input = extractLandmarkFeatures(landmarks, handedness);
+
+      var inputTensor = [Float32List.fromList(input)];
+      var output = List.filled(labelMapping.length, 0.0).reshape([1, labelMapping.length]);
+
+      interpreter.run(inputTensor.reshape([1, 74]), output);
+
+      int predictedIndex = 0;
+      double maxScore = output[0][0];
+
+      for (int i = 1; i < output[0].length; i++) {
+        if (output[0][i] > maxScore) {
+          maxScore = output[0][i];
+          predictedIndex = i;
+        }
+      }
+      String predictedLabel = labelMapping["$predictedIndex"];
+      String correctAnswer = questions[currentQuestion]['answer'];
+
+      print("Prediction: $predictedLabel (Score: ${maxScore.toStringAsFixed(3)})");
+      print("Expected: $correctAnswer");
+
+      // Add 5 seconds delay after each frame before showing "Next" button
+      await Future.delayed(Duration(seconds: 5));
+
+      setState(() {
+        showNextButton = true;
+      });
+    } catch (e) {
+      print("Detection error: $e");
+    }
+    _isProcessing = false;
+  });
+}
+
 
   img.Image convertYUV420ToImage(CameraImage image) {
     final int width = image.width;
@@ -187,13 +261,15 @@ class _LessonState extends State<Lesson>{
     if (currentQuestion < questions.length - 1) {
       setState(() {
         currentQuestion++;
+        showNextButton = false;
       });
     } else {
       currentQuestion=0;
       nextStage();
+      showNextButton = false;
     }
   }
-
+  
   void nextStage() {
     setState(() {
       if (currentStage == LessonStage.learning) {
@@ -206,7 +282,11 @@ class _LessonState extends State<Lesson>{
     });
   }
 
-  void completed(){
+  void completed() async {
+    int currentLevel = await _databaseService.fetchUserLevel();
+    if (widget.level + 1 > currentLevel) {
+      await _databaseService.updateUserLevel(widget.level + 1); // unlock next level
+    }
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -216,7 +296,7 @@ class _LessonState extends State<Lesson>{
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pop(context);
+              Navigator.pop(context); // back to Journey
             },
             child: Text("OK"),
           ),
@@ -224,6 +304,7 @@ class _LessonState extends State<Lesson>{
       ),
     );
   }
+
 
   void checkAnswer(String answer){
     //if answer = correct from firebase

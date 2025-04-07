@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart' show dotenv;
+import 'package:kitahack/community.dart';
 import 'package:kitahack/profile.dart';
 import 'package:kitahack/translator.dart';
 import 'login.dart';
@@ -12,7 +13,7 @@ List<CameraDescription> cameras=[];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Ensure Flutter is initialized
-  await dotenv.load(fileName: ".env");
+  await dotenv.load();
   await Firebase.initializeApp(
     options: (DefaultFirebaseOptions.currentPlatform)
   ); // Initialize Firebase
@@ -43,6 +44,7 @@ class _MainFlowState extends State<MainFlow>{
     Journey(cameras),
     Translator(cameras),
     Profile(),
+    Community(),
     Login(cameras),
   ];
   void changePage(int page){
@@ -73,6 +75,10 @@ class _MainFlowState extends State<MainFlow>{
           BottomNavigationBarItem(
             icon: Icon(Icons.account_circle),
             label: 'Profile',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.groups),
+            label: 'Community',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.logout),
