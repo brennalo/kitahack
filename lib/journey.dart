@@ -54,7 +54,7 @@ class _JourneyState extends State<Journey>{
                   onPressed: isLocked
                     ?null
                     : () async{
-                    await _databaseService.updateUserLevel(index + 1);
+                    await _databaseService.updateUserLevel (index + 1);
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context)=>getPage(index + 1)),

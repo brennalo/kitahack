@@ -6,7 +6,6 @@ import 'firebase_service.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'dart:convert';
-import 'dart:io';
 import 'package:image/image.dart' as img;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -16,7 +15,6 @@ class Lesson extends StatefulWidget{
   List<CameraDescription> cameras;
   Lesson(this.cameras,this.level);
   
-
   @override
   State<Lesson> createState() => _LessonState();
 }
@@ -40,8 +38,9 @@ class _LessonState extends State<Lesson>{
   void initState() {
     super.initState();
     fetchLessons();
-    initCamera();
-    // loadModelAndLabels();
+    initCamera().then((_) {
+      loadModelAndLabels();
+    });
   }
 
   Future<void> initCamera() async {
@@ -52,7 +51,7 @@ class _LessonState extends State<Lesson>{
     cameraController = CameraController(frontCamera, ResolutionPreset.low);
     await cameraController.initialize();
     setState(() {});
-    // startImageStream();
+    startImageStream();
   }
 
   void fetchLessons() async {
@@ -66,174 +65,114 @@ class _LessonState extends State<Lesson>{
     }
   }
 
-  Future<void> captureAndSendToGemini() async {
-    if (!cameraController.value.isInitialized || _isProcessing) return;
-    _isProcessing = true;
-    setState(() => showNextButton = false);
-
-    try {
-      final XFile file = await cameraController.takePicture();
-      final bytes = await File(file.path).readAsBytes();
-      final base64Image = base64Encode(bytes);
-
-      // 👇 Send to Gemini backend and get result
-      final predictedLabel = await sendToGemini(base64Image);
-
-      final expected = questions[currentQuestion]['answer'];
-      print("🤖 Gemini Predicted: $predictedLabel | 🔤 Expected: $expected");
-
-      if (predictedLabel.toLowerCase().trim() == expected.toLowerCase().trim()) {
-        setState(() => showNextButton = true);
-      }
-    } catch (e) {
-      print("Gemini detection error: $e");
-    }
-    _isProcessing = false;
+  Future<void> loadModelAndLabels() async {
+    final modelData = await rootBundle.load('assets/sign_language_model.tflite');
+    final modelBytes = modelData.buffer.asUint8List();
+    interpreter = Interpreter.fromBuffer(modelBytes);
+    final jsonStr = await rootBundle.loadString('assets/label_mapping.json');
+    labelMapping = json.decode(jsonStr);
+    setState(() {
+      modelReady = true;
+    });
   }
 
-  Future<String> sendToGemini(String base64Image) async {
-    final uri = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=$apiKey',);
-    final body = {
-      "contents": [
-        {
-          "role": "user",
-          "parts": [
-            {
-              "inline_data": {
-                "mime_type": "image/jpeg",
-                "data": base64Image
-              }
-            },
-            {
-              "text":
-                "This is a sign language gesture. Respond with only one of these exact labels: One, Two, Three, Hello, Goodbye, Thank You."
-            }
-          ]
+  void startImageStream() {
+    cameraController.startImageStream((CameraImage image) async {
+      if (_isProcessing || !modelReady) return;
+      _isProcessing = true;
+      await Future.delayed(Duration(milliseconds: 300));
+      try {
+        final img.Image rgbImage = convertYUV420ToImage(image);
+        int cropSize = rgbImage.width < rgbImage.height ? rgbImage.width : rgbImage.height;
+        final img.Image cropped = img.copyCrop(
+          rgbImage,
+          (rgbImage.width - cropSize) ~/ 2,
+          (rgbImage.height - cropSize) ~/ 2,
+          cropSize,
+          cropSize,
+        );
+        final img.Image resized = img.copyResize(cropped, width: 224, height: 224);
+        final input = [
+          List.generate(224, (y) => List.generate(224, (x) {
+            final pixel = resized.getPixel(x, y);
+            return [
+              img.getRed(pixel) / 255.0,
+              img.getGreen(pixel) / 255.0,
+              img.getBlue(pixel) / 255.0,
+            ];
+          }))
+        ];
+        var output = List.generate(2034, (_) => List.filled(6, 0.0));
+        interpreter.run(input, output);
+
+        final prediction = List.filled(6, 0.0);
+        for (var row in output) {
+          for (int i = 0; i < 6; i++) {
+            prediction[i] += row[i];
+          }
         }
-      ]
-    };
+        for (int i = 0; i < 6; i++) {
+          prediction[i] /= 2034;
+        }
+        final maxIndex = prediction.indexOf(prediction.reduce((a, b) => a > b ? a : b));
+        final predictedLabel = labelMapping[maxIndex.toString()];
+        final expected = questions[currentQuestion]['label'];
+        print("Predicted: $predictedLabel | Expected: $expected");
+        print("Prediction confidence: ${prediction[maxIndex]}");
+        print("All scores: $prediction");
 
-    final response = await http.post(
-      uri,
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode(body),
-    );
+        if (prediction[maxIndex] > 0.5 &&
+          predictedLabel.toLowerCase().trim() == expected.toLowerCase().trim()) {
+            setState(() => showNextButton = true);
+          } else {
+            setState(() => showNextButton = false);
+          }
+      } catch (e) {
+        print("Detection error: $e");
+      }
 
-    final result = jsonDecode(response.body);
-    final textResponse = result['candidates']?[0]?['content']?['parts']?[0]?['text'];
-    print("🔍 Gemini raw response: $textResponse");
-    return textResponse ?? "Unknown";
+      _isProcessing = false;
+    });
   }
 
+  img.Image convertYUV420ToImage(CameraImage image) {
+    final int width = image.width;
+    final int height = image.height;
+    final int uvRowStride = image.planes[1].bytesPerRow;
+    final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+    final img.Image imgBuffer = img.Image.rgb(width, height); // RGB constructor
 
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final int uvIndex = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
+        final int indexY = y * width + x;
+        if (indexY >= image.planes[0].bytes.length ||
+          uvIndex >= image.planes[1].bytes.length ||
+          uvIndex >= image.planes[2].bytes.length) {
+            continue;
+        }
 
-  // Future<void> loadModelAndLabels() async {
-  //   final modelData = await rootBundle.load('assets/sign_language_model.tflite');
-  //   final modelBytes = modelData.buffer.asUint8List();
-  //   interpreter = Interpreter.fromBuffer(modelBytes);
-  //   final jsonStr = await rootBundle.loadString('assets/label_mapping.json');
-  //   labelMapping = json.decode(jsonStr);
-  //   setState(() {
-  //     modelReady = true;
-  //   });
-  // }
+        final int yVal = image.planes[0].bytes[indexY];
+        final int uVal = image.planes[1].bytes[uvIndex];
+        final int vVal = image.planes[2].bytes[uvIndex];
 
-  // void startImageStream() {
-  //   cameraController.startImageStream((CameraImage image) async {
-  //     if (_isProcessing || !modelReady) return;
-  //     _isProcessing = true;
-  //     await Future.delayed(Duration(milliseconds: 300));
-  //     try {
-  //       final img.Image rgbImage = convertYUV420ToImage(image);
-  //       int cropSize = rgbImage.width < rgbImage.height ? rgbImage.width : rgbImage.height;
-  //       final img.Image cropped = img.copyCrop(
-  //         rgbImage,
-  //         (rgbImage.width - cropSize) ~/ 2,
-  //         (rgbImage.height - cropSize) ~/ 2,
-  //         cropSize,
-  //         cropSize,
-  //       );
-  //       final img.Image resized = img.copyResize(cropped, width: 224, height: 224);
-  //       final input = [
-  //         List.generate(224, (y) => List.generate(224, (x) {
-  //           final pixel = resized.getPixel(x, y);
-  //           return [
-  //             img.getRed(pixel) / 255.0,
-  //             img.getGreen(pixel) / 255.0,
-  //             img.getBlue(pixel) / 255.0,
-  //           ];
-  //         }))
-  //       ];
-  //       var output = List.generate(2062, (_) => List.filled(6, 0.0));
-  //       interpreter.run(input, output);
+        int r = (yVal + 1.370705 * (vVal - 128)).round();
+        int g = (yVal - 0.337633 * (uVal - 128) - 0.698001 * (vVal - 128)).round();
+        int b = (yVal + 1.732446 * (uVal - 128)).round();
 
-  //       final prediction = List.filled(6, 0.0);
-  //       for (var row in output) {
-  //         for (int i = 0; i < 6; i++) {
-  //           prediction[i] += row[i];
-  //         }
-  //       }
-  //       for (int i = 0; i < 6; i++) {
-  //         prediction[i] /= 2062;
-  //       }
-  //       final maxIndex = prediction.indexOf(prediction.reduce((a, b) => a > b ? a : b));
-  //       final predictedLabel = labelMapping[maxIndex.toString()];
-  //       final expected = questions[currentQuestion]['answer'];
-  //       print("Predicted: $predictedLabel | Expected: $expected");
-  //       print("Prediction confidence: ${prediction[maxIndex]}");
-  //       print("All scores: $prediction");
-
-  //       if (prediction[maxIndex] > 0.7 &&
-  //         predictedLabel.toLowerCase().trim() == expected.toLowerCase().trim()) {
-  //           setState(() => showNextButton = true);
-  //         } else {
-  //           setState(() => showNextButton = false);
-  //         }
-  //     } catch (e) {
-  //       print("Detection error: $e");
-  //     }
-
-  //     _isProcessing = false;
-  //   });
-  // }
-
-  // img.Image convertYUV420ToImage(CameraImage image) {
-  //   final int width = image.width;
-  //   final int height = image.height;
-  //   final int uvRowStride = image.planes[1].bytesPerRow;
-  //   final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
-  //   final img.Image imgBuffer = img.Image.rgb(width, height); // RGB constructor
-
-  //   for (int y = 0; y < height; y++) {
-  //     for (int x = 0; x < width; x++) {
-  //       final int uvIndex = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
-  //       final int indexY = y * width + x;
-  //       if (indexY >= image.planes[0].bytes.length ||
-  //         uvIndex >= image.planes[1].bytes.length ||
-  //         uvIndex >= image.planes[2].bytes.length) {
-  //           continue;
-  //       }
-
-  //       final int yVal = image.planes[0].bytes[indexY];
-  //       final int uVal = image.planes[1].bytes[uvIndex];
-  //       final int vVal = image.planes[2].bytes[uvIndex];
-
-  //       int r = (yVal + 1.370705 * (vVal - 128)).round();
-  //       int g = (yVal - 0.337633 * (uVal - 128) - 0.698001 * (vVal - 128)).round();
-  //       int b = (yVal + 1.732446 * (uVal - 128)).round();
-
-  //       imgBuffer.setPixel(x, y, img.getColor(
-  //         r.clamp(0, 255),
-  //         g.clamp(0, 255),
-  //         b.clamp(0, 255),
-  //       ));
-  //     }
-  //   }
-  //   return imgBuffer;
-  // }
+        imgBuffer.setPixel(x, y, img.getColor(
+          r.clamp(0, 255),
+          g.clamp(0, 255),
+          b.clamp(0, 255),
+        ));
+      }
+    }
+    return imgBuffer;
+  }
 
   void dispose(){
     _controller.dispose();
+    cameraController.stopImageStream();
     cameraController.dispose();
     super.dispose();
   }
@@ -413,7 +352,7 @@ class _LessonState extends State<Lesson>{
                     CircularProgressIndicator(color: Colors.orange[800]),
                     SizedBox(height: 10),
                     Text(
-                      '📷 Scanning sign... Please hold the gesture steady',
+                      'Scanning sign...',
                       style: TextStyle(
                         color: Colors.orange[800],
                         fontSize: 16,

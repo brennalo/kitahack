@@ -12,7 +12,7 @@ List<CameraDescription> cameras=[];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Ensure Flutter is initialized
-  await dotenv.load(fileName:".env");
+  await dotenv.load(fileName: ".env");
   await Firebase.initializeApp(
     options: (DefaultFirebaseOptions.currentPlatform)
   ); // Initialize Firebase

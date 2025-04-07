@@ -50,8 +50,8 @@ class DefaultFirebaseOptions {
     }
   }
 
-  static FirebaseOptions android = FirebaseOptions(
-    apiKey: dotenv.env['ANDRIOD_API_KEY']?? '',
+  static FirebaseOptions get android => FirebaseOptions(
+    apiKey: dotenv.env['ANDROID_API_KEY']?? '',
     appId: '1:1049693755732:android:af982b7f19af73062e50c1',
     messagingSenderId: '1049693755732',
     projectId: 'kitahack-f5f7d',
@@ -59,7 +59,7 @@ class DefaultFirebaseOptions {
     storageBucket: 'kitahack-f5f7d.firebasestorage.app',
   );
 
-  static FirebaseOptions ios = FirebaseOptions(
+  static FirebaseOptions get ios => FirebaseOptions(
     apiKey: dotenv.env['IOS_API_KEY']?? '',
     appId: '1:1049693755732:ios:f975252153e176922e50c1',
     messagingSenderId: '1049693755732',
