@@ -1,13 +1,21 @@
 import 'package:camera_platform_interface/src/types/camera_description.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:http/http.dart' as http;
 import 'firebase_service.dart';
+import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'dart:convert';
+import 'dart:io';
+import 'package:image/image.dart' as img;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 enum LessonStage {learning, button, camera}
 class Lesson extends StatefulWidget{
   final int level;
   List<CameraDescription> cameras;
   Lesson(this.cameras,this.level);
+  
 
   @override
   State<Lesson> createState() => _LessonState();
@@ -17,22 +25,34 @@ class _LessonState extends State<Lesson>{
   LessonStage currentStage = LessonStage.learning;
   var currentQuestion = 0;
   bool _isLoading = true;
+  bool modelReady = false;
+  bool showNextButton = false;
+  bool _isProcessing = false;
   List<Map<String, dynamic>> questions = [];
   final DatabaseService _databaseService = DatabaseService();
   TextEditingController _controller = new TextEditingController();
   late CameraController cameraController;
+  late Interpreter interpreter;
+  Map<String, dynamic> labelMapping = {};
+  final String? apiKey = dotenv.env['GEMINI_API_KEY'];
   
   @override
   void initState() {
     super.initState();
     fetchLessons();
-    if (widget.cameras.isNotEmpty) {
-      cameraController = CameraController(widget.cameras[0], ResolutionPreset.medium);
-      cameraController.initialize().then((_) {
-        if (!mounted) return;
-        setState(() {});
-      });
-    }
+    initCamera();
+    // loadModelAndLabels();
+  }
+
+  Future<void> initCamera() async {
+    final frontCamera = widget.cameras.firstWhere(
+      (cam) => cam.lensDirection == CameraLensDirection.front,
+      orElse: () => widget.cameras.first,
+    );
+    cameraController = CameraController(frontCamera, ResolutionPreset.low);
+    await cameraController.initialize();
+    setState(() {});
+    // startImageStream();
   }
 
   void fetchLessons() async {
@@ -46,8 +66,175 @@ class _LessonState extends State<Lesson>{
     }
   }
 
+  Future<void> captureAndSendToGemini() async {
+    if (!cameraController.value.isInitialized || _isProcessing) return;
+    _isProcessing = true;
+    setState(() => showNextButton = false);
+
+    try {
+      final XFile file = await cameraController.takePicture();
+      final bytes = await File(file.path).readAsBytes();
+      final base64Image = base64Encode(bytes);
+
+      // 👇 Send to Gemini backend and get result
+      final predictedLabel = await sendToGemini(base64Image);
+
+      final expected = questions[currentQuestion]['answer'];
+      print("🤖 Gemini Predicted: $predictedLabel | 🔤 Expected: $expected");
+
+      if (predictedLabel.toLowerCase().trim() == expected.toLowerCase().trim()) {
+        setState(() => showNextButton = true);
+      }
+    } catch (e) {
+      print("Gemini detection error: $e");
+    }
+    _isProcessing = false;
+  }
+
+  Future<String> sendToGemini(String base64Image) async {
+    final uri = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=$apiKey',);
+    final body = {
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "inline_data": {
+                "mime_type": "image/jpeg",
+                "data": base64Image
+              }
+            },
+            {
+              "text":
+                "This is a sign language gesture. Respond with only one of these exact labels: One, Two, Three, Hello, Goodbye, Thank You."
+            }
+          ]
+        }
+      ]
+    };
+
+    final response = await http.post(
+      uri,
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode(body),
+    );
+
+    final result = jsonDecode(response.body);
+    final textResponse = result['candidates']?[0]?['content']?['parts']?[0]?['text'];
+    print("🔍 Gemini raw response: $textResponse");
+    return textResponse ?? "Unknown";
+  }
+
+
+
+  // Future<void> loadModelAndLabels() async {
+  //   final modelData = await rootBundle.load('assets/sign_language_model.tflite');
+  //   final modelBytes = modelData.buffer.asUint8List();
+  //   interpreter = Interpreter.fromBuffer(modelBytes);
+  //   final jsonStr = await rootBundle.loadString('assets/label_mapping.json');
+  //   labelMapping = json.decode(jsonStr);
+  //   setState(() {
+  //     modelReady = true;
+  //   });
+  // }
+
+  // void startImageStream() {
+  //   cameraController.startImageStream((CameraImage image) async {
+  //     if (_isProcessing || !modelReady) return;
+  //     _isProcessing = true;
+  //     await Future.delayed(Duration(milliseconds: 300));
+  //     try {
+  //       final img.Image rgbImage = convertYUV420ToImage(image);
+  //       int cropSize = rgbImage.width < rgbImage.height ? rgbImage.width : rgbImage.height;
+  //       final img.Image cropped = img.copyCrop(
+  //         rgbImage,
+  //         (rgbImage.width - cropSize) ~/ 2,
+  //         (rgbImage.height - cropSize) ~/ 2,
+  //         cropSize,
+  //         cropSize,
+  //       );
+  //       final img.Image resized = img.copyResize(cropped, width: 224, height: 224);
+  //       final input = [
+  //         List.generate(224, (y) => List.generate(224, (x) {
+  //           final pixel = resized.getPixel(x, y);
+  //           return [
+  //             img.getRed(pixel) / 255.0,
+  //             img.getGreen(pixel) / 255.0,
+  //             img.getBlue(pixel) / 255.0,
+  //           ];
+  //         }))
+  //       ];
+  //       var output = List.generate(2062, (_) => List.filled(6, 0.0));
+  //       interpreter.run(input, output);
+
+  //       final prediction = List.filled(6, 0.0);
+  //       for (var row in output) {
+  //         for (int i = 0; i < 6; i++) {
+  //           prediction[i] += row[i];
+  //         }
+  //       }
+  //       for (int i = 0; i < 6; i++) {
+  //         prediction[i] /= 2062;
+  //       }
+  //       final maxIndex = prediction.indexOf(prediction.reduce((a, b) => a > b ? a : b));
+  //       final predictedLabel = labelMapping[maxIndex.toString()];
+  //       final expected = questions[currentQuestion]['answer'];
+  //       print("Predicted: $predictedLabel | Expected: $expected");
+  //       print("Prediction confidence: ${prediction[maxIndex]}");
+  //       print("All scores: $prediction");
+
+  //       if (prediction[maxIndex] > 0.7 &&
+  //         predictedLabel.toLowerCase().trim() == expected.toLowerCase().trim()) {
+  //           setState(() => showNextButton = true);
+  //         } else {
+  //           setState(() => showNextButton = false);
+  //         }
+  //     } catch (e) {
+  //       print("Detection error: $e");
+  //     }
+
+  //     _isProcessing = false;
+  //   });
+  // }
+
+  // img.Image convertYUV420ToImage(CameraImage image) {
+  //   final int width = image.width;
+  //   final int height = image.height;
+  //   final int uvRowStride = image.planes[1].bytesPerRow;
+  //   final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+  //   final img.Image imgBuffer = img.Image.rgb(width, height); // RGB constructor
+
+  //   for (int y = 0; y < height; y++) {
+  //     for (int x = 0; x < width; x++) {
+  //       final int uvIndex = uvPixelStride * (x ~/ 2) + uvRowStride * (y ~/ 2);
+  //       final int indexY = y * width + x;
+  //       if (indexY >= image.planes[0].bytes.length ||
+  //         uvIndex >= image.planes[1].bytes.length ||
+  //         uvIndex >= image.planes[2].bytes.length) {
+  //           continue;
+  //       }
+
+  //       final int yVal = image.planes[0].bytes[indexY];
+  //       final int uVal = image.planes[1].bytes[uvIndex];
+  //       final int vVal = image.planes[2].bytes[uvIndex];
+
+  //       int r = (yVal + 1.370705 * (vVal - 128)).round();
+  //       int g = (yVal - 0.337633 * (uVal - 128) - 0.698001 * (vVal - 128)).round();
+  //       int b = (yVal + 1.732446 * (uVal - 128)).round();
+
+  //       imgBuffer.setPixel(x, y, img.getColor(
+  //         r.clamp(0, 255),
+  //         g.clamp(0, 255),
+  //         b.clamp(0, 255),
+  //       ));
+  //     }
+  //   }
+  //   return imgBuffer;
+  // }
+
   void dispose(){
     _controller.dispose();
+    cameraController.dispose();
     super.dispose();
   }
 
@@ -212,7 +399,29 @@ class _LessonState extends State<Lesson>{
                   aspectRatio: cameraController.value.aspectRatio,
                   child: CameraPreview(cameraController),
                 )
-                : Container()
+                : Container(),
+                SizedBox(height: 20),
+                if (showNextButton)
+                ElevatedButton(
+                  onPressed: nextQuestion,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[600]),
+                  child: Text('Next', style: TextStyle(color: Colors.white)),
+                )
+                else
+                Column(
+                  children: [
+                    CircularProgressIndicator(color: Colors.orange[800]),
+                    SizedBox(height: 10),
+                    Text(
+                      '📷 Scanning sign... Please hold the gesture steady',
+                      style: TextStyle(
+                        color: Colors.orange[800],
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ]
             ]
         ),

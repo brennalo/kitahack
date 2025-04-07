@@ -152,14 +152,14 @@ class DatabaseService{
   // realtime update user level.
   Future<void> updateUserLevel(int newLevel) async {
     String uid = _auth.currentUser?.uid ?? '';
-  
     if (uid.isNotEmpty) {
       DocumentReference userRef = _db.collection('users').doc(uid);
       //fetch user data
       DocumentSnapshot snapshot = await userRef.get();
       Map<String, dynamic>? data = snapshot.data() as Map<String, dynamic>?;
-      int currentLevel = data?['level'] ?? 1;
+      int currentLevel = data?['level'] ?? 0;
       List<dynamic> completedLevels = data?['completedLevels'] ?? [];
+      
       //append new level
       if (!completedLevels.contains(newLevel)) {
         completedLevels.add(newLevel);
