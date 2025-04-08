@@ -132,6 +132,7 @@ class _LessonState extends State<Lesson>{
     cameraController = CameraController(frontCamera, ResolutionPreset.low);
     await cameraController.initialize();
     setState(() {});
+    await Future.delayed(Duration(seconds: 3));
     startImageStream();
   }
 
@@ -196,7 +197,7 @@ class _LessonState extends State<Lesson>{
       print("Expected: $correctAnswer");
 
       // Add 5 seconds delay after each frame before showing "Next" button
-      await Future.delayed(Duration(seconds: 5));
+      await Future.delayed(Duration(seconds: 3));
 
       setState(() {
         showNextButton = true;
