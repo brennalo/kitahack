@@ -131,7 +131,9 @@ class _LessonState extends State<Lesson>{
     );
     cameraController = CameraController(frontCamera, ResolutionPreset.low);
     await cameraController.initialize();
+    if (!mounted) return;
     setState(() {});
+    if (!mounted) return;
     await Future.delayed(Duration(seconds: 3));
     startImageStream();
   }
@@ -139,6 +141,7 @@ class _LessonState extends State<Lesson>{
   void fetchLessons() async {
     String level = "level${widget.level}"; 
     List<Map<String, dynamic>>? data = await _databaseService.fetchLessonData(level).timeout(Duration(seconds: 5));
+    if (!mounted) return;
     if (data != null) {
       setState(() {
         questions = data;
@@ -153,16 +156,16 @@ class _LessonState extends State<Lesson>{
     interpreter = Interpreter.fromBuffer(modelBytes);
     final jsonStr = await rootBundle.loadString('assets/label_mapping.json');
     labelMapping = json.decode(jsonStr);
+    if (!mounted) return;
     setState(() {
       modelReady = true;
     });
   }
 
   void startImageStream() {
-  cameraController.startImageStream((CameraImage image) async {
-    if (_isProcessing || !modelReady) return;
-
-    _isProcessing = true;
+    cameraController.startImageStream((CameraImage image) async {
+      if (_isProcessing || !modelReady) return;
+      _isProcessing = true;
     
     try {
       final result = await runMediaPipeOnImage(image);
@@ -192,13 +195,10 @@ class _LessonState extends State<Lesson>{
       }
       String predictedLabel = labelMapping["$predictedIndex"];
       String correctAnswer = questions[currentQuestion]['answer'];
-
       print("Prediction: $predictedLabel (Score: ${maxScore.toStringAsFixed(3)})");
       print("Expected: $correctAnswer");
-
-      // Add 5 seconds delay after each frame before showing "Next" button
       await Future.delayed(Duration(seconds: 3));
-
+      if (!mounted) return;
       setState(() {
         showNextButton = true;
       });
@@ -208,7 +208,6 @@ class _LessonState extends State<Lesson>{
     _isProcessing = false;
   });
 }
-
 
   img.Image convertYUV420ToImage(CameraImage image) {
     final int width = image.width;
@@ -245,9 +244,16 @@ class _LessonState extends State<Lesson>{
     return imgBuffer;
   }
 
-  void dispose(){
+  @override
+  void dispose() {
     _controller.dispose();
-    cameraController.dispose();
+    if (cameraController.value.isStreamingImages) {
+      cameraController.stopImageStream().then((_) {
+        cameraController.dispose();
+      });
+    } else {
+      cameraController.dispose();
+    }
     super.dispose();
   }
 
