@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1049693755732",
+    "firebase_url": "https://kitahack-f5f7d-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "kitahack-f5f7d",
+    "storage_bucket": "kitahack-f5f7d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1049693755732:android:af982b7f19af73062e50c1",
+        "android_client_info": {
+          "package_name": "com.example.kitahack"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1049693755732-b3k2muftap9jnrc9uhcfr3svpoagjkff.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAG8s1KEOCt_AI4cmzwAn7_fb8pTOGYgFw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1049693755732-b3k2muftap9jnrc9uhcfr3svpoagjkff.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1049693755732-nah1nsjo70bda13ik3gg5gt9cn1rjq6m.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.kitahack"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

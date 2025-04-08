@@ -247,7 +247,6 @@ class _LessonState extends State<Lesson>{
 
   void dispose(){
     _controller.dispose();
-    cameraController.stopImageStream();
     cameraController.dispose();
     super.dispose();
   }

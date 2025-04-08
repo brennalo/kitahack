@@ -8,6 +8,8 @@ import 'login.dart';
 import 'journey.dart';
 import 'package:camera/camera.dart';
 import 'firebase_options.dart';
+//adb shell setprop debug.firebase.analytics.app com.example.kitahack - access analytics through
+//
 
 List<CameraDescription> cameras=[];
 

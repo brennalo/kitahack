@@ -1,3 +1,4 @@
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:kitahack/firebase_service.dart';
@@ -11,31 +12,50 @@ class Login extends StatefulWidget {
   State<Login> createState() => _LoginState();
 }
 
-
 class _LoginState extends State<Login>{
   TextEditingController emailText=TextEditingController();
   TextEditingController passwordText=TextEditingController();
   final AuthService _auth = AuthService();
+  final FirebaseAnalytics _analytics = FirebaseAnalytics.instance;
+  bool _obscurePassword = true;
 
   void login() async {
-  String email = emailText.text;
-  String password = passwordText.text;
-  if (email.isNotEmpty && password.isNotEmpty) {
-    try {
-      User? user = await _auth.signin(email: email, password: password, context: context);
-      if (user != null) { 
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => MainFlow(widget.cameras)),
+    String email = emailText.text;
+    String password = passwordText.text;
+
+    if (email.isNotEmpty && password.isNotEmpty) {
+      try {
+        User? user = await _auth.signin(email: email, password: password, context: context);
+        if (user != null) {
+          // ✅ Log successful login
+          await _analytics.logLogin(loginMethod: 'email');
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => MainFlow(widget.cameras)),
+          );
+        }
+      } catch (e) {
+        await _analytics.logEvent(
+          name: 'login_failed',
+          parameters: {
+            'method': 'email',
+            'error': e.toString(),
+          },
+        );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('An unexpected error occurred. Please try again.'), backgroundColor: Colors.red),
         );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('An unexpected error occurred. Please try again.'), backgroundColor: Colors.red),
+    } else {
+      await _analytics.logEvent(
+        name: 'login_attempt_incomplete',
+        parameters: {
+          'email_entered': email.isNotEmpty,
+          'password_entered': password.isNotEmpty,
+        },
       );
-    }
-  } else {
-    ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Please enter email and password'), backgroundColor: Colors.orange),
     );
   }
@@ -100,23 +120,34 @@ class _LoginState extends State<Login>{
                 const SizedBox(height: 16),
                 TextField(
                   controller: passwordText,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    filled:true,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    filled: true,
                     fillColor: Colors.transparent,
                     labelText: 'Password',
                     labelStyle: const TextStyle(color: Colors.white),
-                    border: OutlineInputBorder(
-                      borderSide: const BorderSide(color: Colors.white),
+                    border: const OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white),
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderSide: const BorderSide(color: Colors.amberAccent),
+                    focusedBorder: const OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.amberAccent),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: const BorderSide(color: Colors.white),
-                    )
-                  ),
-                  ),
+                    enabledBorder: const OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white),
+                    ),
+                    suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                      color: Colors.white,
+                    ),
+                    onPressed: () {
+                    setState(() {
+                      _obscurePassword = !_obscurePassword;
+                    });
+                  },
+                ),
+              ),
+            ),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   style:ElevatedButton.styleFrom(
