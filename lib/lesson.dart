@@ -288,7 +288,7 @@ class _LessonState extends State<Lesson>{
     if (widget.level + 1 > currentLevel) {
       await _databaseService.updateUserLevel(widget.level + 1); // unlock next level
     }
-    showDialog(
+    await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text("Lesson Completed"),
@@ -296,16 +296,16 @@ class _LessonState extends State<Lesson>{
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context); // back to Journey
+              Navigator.pop(context); // closes the dialog
             },
             child: Text("OK"),
           ),
         ],
       ),
     );
+    if (!mounted) return;
+    Navigator.pop(context); // back to Journey page
   }
-
 
   void checkAnswer(String answer){
     //if answer = correct from firebase

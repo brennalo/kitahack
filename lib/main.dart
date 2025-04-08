@@ -47,11 +47,21 @@ class _MainFlowState extends State<MainFlow>{
     Community(),
     Login(cameras),
   ];
-  void changePage(int page){
-    setState(() {
-      selectedpage=page;
-    });
+
+  void changePage(int page) {
+    if (page == 4) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => Login(cameras)), // won't show navigatebar
+        (Route<dynamic> route) => false, // removes all previous routes
+      );
+    } else {
+      setState(() {
+        selectedpage = page;
+      });
+    }
   }
+
 
   Widget build(BuildContext context){
     return Scaffold(
