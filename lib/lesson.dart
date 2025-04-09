@@ -419,7 +419,7 @@ class _LessonState extends State<Lesson>{
                   color: Colors.amber,
                 ),
                 SizedBox(height:15.0,),
-                Image.asset(questions[currentQuestion]['image'], height: 150),
+                Image.asset(questions[currentQuestion]['label'], height: 150),
                 SizedBox(height:5.0),
                 cameraController.value.isInitialized? AspectRatio(
                   aspectRatio: cameraController.value.aspectRatio,
