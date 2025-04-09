@@ -409,7 +409,7 @@ class _LessonState extends State<Lesson>{
                       child: Text('Check')),
                 ),
                 ] else if (currentStage==LessonStage.camera)...[
-                Text('What does this sign means?',
+                Text('What is the gesture for this sign?',
                     style: TextStyle(color: Colors.black,
                         fontSize: 25.0,
                         fontWeight: FontWeight.w500)),
@@ -419,7 +419,8 @@ class _LessonState extends State<Lesson>{
                   color: Colors.amber,
                 ),
                 SizedBox(height:15.0,),
-                Image.asset(questions[currentQuestion]['label'], height: 150),
+                Text(questions[currentQuestion]['label'], 
+                     style:TextStyle(fontSize:25.0, fontWeight:FontWeight.w400)),
                 SizedBox(height:5.0),
                 cameraController.value.isInitialized? AspectRatio(
                   aspectRatio: cameraController.value.aspectRatio,
