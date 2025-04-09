@@ -1,9 +1,6 @@
 # SYS (See Your Sign) 
 A sign language self-learning app integrated with ai-powered real-time gesture recognition for Google KitaHack 2025
 
-## Introduction
-
-
 ## Features
 - Community Forum
   - Post forum topics related to any queries or just any silly simple curiosity question!
